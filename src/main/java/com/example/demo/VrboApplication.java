@@ -24,13 +24,12 @@ public class VrboApplication {
             setRequestHeaders(conn);
 
             String requestBody = createRequestBody(address, pageSize);
-            System.out.println("Request Body:" + requestBody);
+
             sendRequest(conn, requestBody);
 
             String response = getResponse(conn);
             generateCSV(response);
 
-            System.out.println("CSV file generated successfully.");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -155,26 +154,101 @@ public class VrboApplication {
     }
 
     private static void generateCSV(String response) throws Exception {
-        JSONObject jsonResponse = new JSONObject(response);
-        JSONArray listings = jsonResponse.getJSONObject("data").getJSONObject("propertySearch")
-                .getJSONArray("propertySearchListings");
+        try {
+            // JSONObject jsonResponse = new JSONObject(response);
+            JSONObject jsonResponse = new JSONObject(getMockResponse());
+            JSONArray listings = jsonResponse.getJSONObject("data").getJSONObject("propertySearch")
+                    .getJSONArray("propertySearchListings");
 
-        try (FileWriter csvWriter = new FileWriter("listings.csv")) {
-            csvWriter.append("Listing ID,Listing Title,Nightly Price,Listing URL\n");
+            try (FileWriter csvWriter = new FileWriter("listings.csv")) {
+                csvWriter.append("Listing ID,Listing Title,Nightly Price,Listing URL\n");
 
-            for (int i = 0; i < listings.length(); i++) {
-                JSONObject listing = listings.getJSONObject(i);
-                String id = listing.getString("id");
-                String title = listing.getJSONObject("headingSection").getString("heading");
-                String url = listing.getJSONObject("cardLink").getJSONObject("resource").getString("value");
-                String price = listing.getJSONObject("priceSection").getJSONArray("priceSummary")
-                        .getJSONObject(0).getJSONArray("displayMessages").getJSONObject(0)
-                        .getJSONObject("price").getString("formatted");
+                for (int i = 0; i < listings.length(); i++) {
+                    JSONObject listing = listings.getJSONObject(i);
+                    String id = listing.getString("id");
+                    String title = listing.getJSONObject("headingSection").getString("heading");
+                    String url = listing.getJSONObject("cardLink").getJSONObject("resource").getString("value");
+                    int price = listing.getJSONObject("priceSection").getJSONObject("priceSummary")
+                            .getJSONArray("displayMessages").getJSONObject(0)
+                            .getJSONArray("lineItems").getJSONObject(0)
+                            .getJSONObject("price").getInt("formatted");
 
-                csvWriter.append(String.format("%s,%s,%s,%s\n", id, title, price, url));
+                    csvWriter.append(String.format("%s,%s,%d,%s\n", id, title, price, url));
+                }
             }
-        }
-        System.out.println(listings);
+            System.out.println("CSV file generated successfully.");
 
+        } catch (Exception e) {
+
+            System.out.println("An error occurred while generating the CSV file.");
+        }
+
+    }
+
+    private static String getMockResponse() {
+
+        return """
+                {
+                    "data": {
+                      "propertySearch": {
+                        "propertySearchListings": [
+                          {
+                            "id": "99754788",
+                            "headingSection": {
+                              "heading": "Vibrant 3BR Chicago Apt. near U of Chicago"
+                            },
+                            "cardLink": {
+                              "resource": {
+                                "value": "https://www.vrbo.com/2586203?chkIn=2024-03-01&chkOut=2024-03-05&adult=2&startDate=2024-03-01&endDate=2024-03-05"
+                              }
+                            },
+                            "priceSection": {
+                              "priceSummary": {
+                                "displayMessages": [
+                                  {
+                                    "lineItems": [
+                                      {
+                                        "price": {
+                                          "formatted": 318
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "id": "68572875",
+                            "headingSection": {
+                              "heading": "Sonder Jewelers Row | Studio Apartment"
+                            },
+                            "cardLink": {
+                              "resource": {
+                                "value": "https://www.vrbo.com/9580663ha?chkIn=2024-03-01&chkOut=2024-03-05&adult=2&startDate=2024-03-01&endDate=2024-03-05"
+                              }
+                            },
+                            "priceSection": {
+                              "priceSummary": {
+                                "displayMessages": [
+                                  {
+                                    "lineItems": [
+                                      {
+                                        "price": {
+                                          "formatted": 152
+                                        }
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+
+                """;
     }
 }
