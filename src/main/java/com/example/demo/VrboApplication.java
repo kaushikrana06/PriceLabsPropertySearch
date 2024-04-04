@@ -318,15 +318,16 @@ public class VrboApplication {
             String start = "", end = "";
             if (resstartdate != -1) {
 
-              int month = days.getJSONObject(resstartdate).getJSONObject("date").getInt("month");
-              int day = days.getJSONObject(resstartdate).getJSONObject("date").getInt("day");
-              int year = days.getJSONObject(resstartdate).getJSONObject("date").getInt("year");
+              LocalDate startDate = LocalDate.of(days.getJSONObject(resstartdate).getJSONObject("date").getInt("year"),
+                  days.getJSONObject(resstartdate).getJSONObject("date").getInt("month"),
+                  days.getJSONObject(resstartdate).getJSONObject("date").getInt("day"));
+              LocalDate endDate = LocalDate.of(days.getJSONObject(resenddate).getJSONObject("date").getInt("year"),
+                  days.getJSONObject(resenddate).getJSONObject("date").getInt("month"),
+                  days.getJSONObject(resenddate).getJSONObject("date").getInt("day"));
 
-              start = (day) + "-" + month + "-" + year;
-              month = days.getJSONObject(resenddate).getJSONObject("date").getInt("month");
-              day = days.getJSONObject(resenddate).getJSONObject("date").getInt("day");
-              year = days.getJSONObject(resenddate).getJSONObject("date").getInt("year");
-              end = (day) + "-" + month + "-" + year;
+              // Formatting the dates as YYYY-MM-DD
+              start = startDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+              end = endDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
             }
             csvWriter.append(String.format(" %s, %s, %s", start, end, maxi));
             csvWriter.append("\n");
