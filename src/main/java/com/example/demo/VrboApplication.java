@@ -8,6 +8,11 @@ import java.io.FileWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -33,6 +38,73 @@ public class VrboApplication {
     } catch (Exception e) {
       e.printStackTrace();
     }
+
+  }
+
+  private static String makeRequest(String requestBody) {
+    try {
+      URL url = new URL("https://www.vrbo.com/graphql");
+      HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+      conn.setRequestMethod("POST");
+      setRequestHeaders(conn);
+
+      sendRequest(conn, requestBody);
+
+      String response = getResponse(conn);
+      return response;
+
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return "";
+  }
+
+  private static String createRequestBodydays(String id) {
+    String jsonInputString = String.format("""
+        [
+             {
+                 "operationName": "PropertyAvailabilityQuery",
+                 "variables": {
+                     "eid": "%s",
+                     "dateRange": {
+                         "end": {
+                             "day": 8,
+                             "month": 6,
+                             "year": 2024
+                         },
+                         "start": {
+                             "day": 6,
+                             "month": 6,
+                             "year": 2024
+                         }
+                     },
+                     "context": {
+                         "siteId": 9001001,
+                         "locale": "en_US",
+                         "eapid": 1,
+                         "currency": "USD",
+                         "device": {
+                             "type": "DESKTOP"
+                         },
+                         "identity": {
+                             "duaid": "f05fffb7-730e-26c8-e6e3-160b57e88af8",
+                             "authState": "ANONYMOUS"
+                         },
+                         "privacyTrackingState": "CAN_TRACK",
+                         "debugContext": {
+                             "abacusOverrides": []
+                         }
+                     }
+                 },
+                 "extensions": {
+                     "persistedQuery": {
+                         "version": 1,
+                         "sha256Hash": "a5faaea405d10b5533931158695480ffc7f2bec5094b02544abbbf15e47d58c2"
+                     }
+                 }
+             }
+         ]""", id);
+    return jsonInputString;
 
   }
 
@@ -79,8 +151,8 @@ public class VrboApplication {
                 "criteria": {
                     "primary": {
                         "dateRange": {
-                            "checkInDate": {"day": 1, "month": 3, "year": 2024},
-                            "checkOutDate": {"day": 5, "month": 3, "year": 2024}
+                            "checkInDate": {"day": 1, "month": 6, "year": 2024},
+                            "checkOutDate": {"day": 5, "month": 6, "year": 2024}
                         },
                         "destination": {
                             "regionName": "%s",
@@ -155,27 +227,111 @@ public class VrboApplication {
 
   private static void generateCSV(String response) throws Exception {
     try {
-      // JSONObject jsonResponse = new JSONObject(response); //actual response from
-      // API
-      JSONObject jsonResponse = new JSONObject(getMockResponse()); // Mock response as the data was empty for
-                                                                   // propertysearchlistings
+      JSONObject jsonResponse = new JSONObject(response);
       JSONArray listings = jsonResponse.getJSONObject("data").getJSONObject("propertySearch")
           .getJSONArray("propertySearchListings");
 
       try (FileWriter csvWriter = new FileWriter("listings.csv")) {
-        csvWriter.append("Listing ID,Listing Title,Nightly Price,Listing URL\n");
 
         for (int i = 0; i < listings.length(); i++) {
           JSONObject listing = listings.getJSONObject(i);
           String id = listing.getString("id");
           String title = listing.getJSONObject("headingSection").getString("heading");
           String url = listing.getJSONObject("cardLink").getJSONObject("resource").getString("value");
-          int price = listing.getJSONObject("priceSection").getJSONObject("priceSummary")
+          String price = listing.getJSONObject("priceSection").getJSONObject("priceSummary")
               .getJSONArray("displayMessages").getJSONObject(0)
               .getJSONArray("lineItems").getJSONObject(0)
-              .getJSONObject("price").getInt("formatted");
+              .getJSONObject("price").getString("formatted");
+          if (!id.equals("") || !title.equals("") || !price.equals("") || !url.equals("")) {
+            id = id.replaceAll(",", " ");
+            title = title.replaceAll(", ", " ");
+            price = price.replaceAll(", ", " ");
+            url = url.replaceAll(", ", " ");
+            id = id.replaceAll("\n", " ");
+            title = title.replaceAll("\n", " ");
+            price = price.replaceAll("\n ", " ");
+            url = url.replaceAll("\n ", " ");
+            String arr[] = title.split(" ");
+            title = arr[0];
+            JSONArray jsonarr = new JSONArray(makeRequest(createRequestBodydays(id)));
+            JSONArray days = jsonarr.getJSONObject(0).getJSONObject("data")
+                .getJSONArray("propertyAvailabilityCalendars")
+                .getJSONObject(0).getJSONArray("days");
 
-          csvWriter.append(String.format("%s,%s,%d,%s\n", id, title, price, url));
+            if (i == 0) {
+              csvWriter.append("Listing ID,Listing Title,Nightly Price,Listing URL,");
+              DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy");
+              ZonedDateTime nowInIST = ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
+
+              LocalDate today = nowInIST.toLocalDate();
+              for (int j = 0; j < 365; j++) {
+                LocalDate fuDate = today.plusDays(j);
+
+                csvWriter
+                    .append(String.format("%s,", fuDate.format(formatter)));
+              }
+              csvWriter.append("startdate,enddate,length\n");
+
+            }
+            csvWriter.append(String.format("%s ,%s ,%s ,%s ", id, title, price, url));
+            int length = 0, startdate = -1, enddate = -1, maxi = 0, resstartdate = -1, resenddate = -1;
+            for (int j = 0; j < days.length(); j++) {
+              int month = days.getJSONObject(j).getJSONObject("date").getInt("month");
+              int day = days.getJSONObject(j).getJSONObject("date").getInt("day");
+              int year = days.getJSONObject(j).getJSONObject("date").getInt("year");
+              LocalDate date = LocalDate.of(year, month, day);
+              ZonedDateTime nowInIST = ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
+              LocalDate todayInIST = nowInIST.toLocalDate();
+              if (!date.isBefore(todayInIST.minusDays(1))
+                  && !date.isAfter(todayInIST.plusYears(1).minusDays(1))) {
+
+                System.out.println(date);
+                Boolean available = days.getJSONObject(j).getBoolean("available");
+                if (available) {
+                  length++;
+                  if (startdate == -1) {
+                    startdate = j;
+                  }
+                  enddate = j;
+                } else {
+                  if (length >= maxi) {
+                    maxi = length;
+                    resstartdate = startdate;
+                    resenddate = enddate;
+                  }
+                  length = 0;
+                  startdate = -1;
+                  enddate = -1;
+
+                }
+                csvWriter
+                    .append(String.format("%s,", days.getJSONObject(j).getBoolean("available")));
+
+              }
+
+            }
+            if (length >= maxi) {
+              maxi = length;
+              resstartdate = startdate;
+              resenddate = enddate;
+            }
+            String start = "", end = "";
+            if (resstartdate != -1) {
+
+              int month = days.getJSONObject(resstartdate).getJSONObject("date").getInt("month");
+              int day = days.getJSONObject(resstartdate).getJSONObject("date").getInt("day");
+              int year = days.getJSONObject(resstartdate).getJSONObject("date").getInt("year");
+
+              start = (day) + "-" + month + "-" + year;
+              month = days.getJSONObject(resenddate).getJSONObject("date").getInt("month");
+              day = days.getJSONObject(resenddate).getJSONObject("date").getInt("day");
+              year = days.getJSONObject(resenddate).getJSONObject("date").getInt("year");
+              end = (day) + "-" + month + "-" + year;
+            }
+            csvWriter.append(String.format(" %s, %s, %s", start, end, maxi));
+            csvWriter.append("\n");
+
+          }
         }
       }
       System.out.println("CSV file generated successfully.");
